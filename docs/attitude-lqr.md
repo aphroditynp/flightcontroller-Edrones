@@ -1,3 +1,8 @@
+> **HISTORICAL / INACTIVE:** The active fixed-wing inner loop was replaced by
+> the TD/V10-trainer2 P+D controller for the TD+LOITER+fuzzy thesis branch.
+> See `docs/td-loiter-fuzzy-port.md`. The LQR source/tooling is retained only
+> for traceability and comparison; `AttitudeController` no longer calls it.
+
 # LQR Attitude Controller (roll + pitch + yaw)
 
 **Modul baru sepenuhnya** — tidak ada LQR di program KHAGESWARA lama.

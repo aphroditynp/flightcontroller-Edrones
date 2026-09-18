@@ -6,7 +6,7 @@
 
 namespace {
 
-constexpr uint16_t kEepromMagic = 0xFC01;  // New schema (FW-only) -- distinct from legacy 0xCDAC.
+constexpr uint16_t kEepromMagic = 0xFC02;  // New schema (FW-only) -- distinct from legacy 0xCDAC.
 
 // 1000, not the old 650: storage/Waypoints.h's kAddrWpData(8) actually
 // extends to 8 + kMaxEepromWaypoints(50)*sizeof(Locations)(16) = 808, which
@@ -47,11 +47,14 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     // (bare compile-time global, no EEPROM exposure). This is the parameter
     // the thesis's fuzzy tuner adjusts at runtime; the base value here is
     // what "L1 conventional" uses when the tuner is disabled.
-    add("L1_PERIOD", &l1.period_s, 22.0f, 5.0f, 40.0f);
+    add("L1_PERIOD", &l1.period_s, 20.0f, 5.0f, 40.0f);
     add("L1_DAMPING", &l1.damping, 0.73f, 0.6f, 1.0f);
     add("L1_XTRACK_I", &l1.xtrack_integrator_gain, 0.2f, 0.0f, 1.0f);
 
-    // Fuzzy L1-period tuner bounds (the thesis's self-tuning mechanism).
+    // Fuzzy L1-period tuner (the thesis's self-tuning mechanism).
+    // FUZZY_ENABLE=0 provides the conventional fixed-period baseline using
+    // the exact same firmware for a fair A/B comparison.
+    add("FUZZY_ENABLE", &fuzzy.enabled, 1.0f, 0.0f, 1.0f);
     add("FUZZY_MIN_PER", &fuzzy.min_period_s, 10.0f, 5.0f, 40.0f);
     add("FUZZY_MAX_PER", &fuzzy.max_period_s, 30.0f, 5.0f, 40.0f);
 
@@ -76,24 +79,12 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("MIN_AIRSPEED", &tecs.min_airspeed_mps, 14.0f, 5.0f, 30.0f);
     add("MAX_AIRSPEED", &tecs.max_airspeed_mps, 22.0f, 10.0f, 45.0f);
 
-    // On/off switch for AttitudeController's yaw coordinated-turn
-    // feedforward (rudder). 1=enabled, 0=rudder forced neutral. Defaults to
-    // 0 (OFF) during the current bench-testing phase -- see
-    // AttitudeControllerConfig::yaw_correction_enabled's doc comment.
-    // K itself stays NOT exposed here (see class doc above) -- this is only
-    // a kill switch, not a tuning knob.
-    add("YAW_CORR_EN", &attitude.yaw_correction_enabled, 0.0f, 0.0f, 1.0f);
+    // TD/V10-trainer2 leaves fixed-wing rudder correction neutral (u_yaw=0),
+    // so the previous YAW_CORR_EN/LQR-yaw parameter is intentionally removed.
 
-    // On/off switch for applying the airspeed-based speed scaler to the LQR
-    // output. 1=applied as designed, 0=forced flat 1.0x (scaler is still
-    // computed and shows up in telemetry either way). Defaults to 0 (OFF)
-    // 2026-08-22: ground-testing reads near-zero airspeed, which clamps the
-    // scaler to 1.8x and made bench behavior look far twitchier than actual
-    // cruise-flight behavior -- see AttitudeControllerConfig::
-    // speed_scaler_enabled's doc comment. MUST be set back to 1 before
-    // flight -- the controller's gains were validated (tools/
-    // lqr_gain_design.py) WITH this scaler compensating the 14-22 m/s
-    // envelope active.
+    // Optional airspeed-based output scaler retained as an experiment hook.
+    // TD/V10-trainer2 does not use this multiplier, so keep SPD_SCALE_EN=0
+    // when reproducing the TD baseline.
     add("SPD_SCALE_EN", &attitude.speed_scaler_enabled, 0.0f, 0.0f, 1.0f);
 
     // BNO055 bench-level trim, set interactively via Mission Planner's
@@ -102,30 +93,18 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("IMU_ROLL_TRIM", &imu.rollTrimDegRef(), 0.0f, -45.0f, 45.0f);
     add("IMU_PITCH_TRIM", &imu.pitchTrimDegRef(), 0.0f, -45.0f, 45.0f);
 
-    // LQR gains, roll/pitch/yaw -- exposed 2026-08-22 for ground-test jitter
-    // tuning (see class doc comment above for the "takes effect on next
-    // power-cycle, not live" caveat this inherits like every other param
-    // here). Defaults kept in sync with AttitudeController.h's struct
-    // literals -- roll/pitch updated 2026-09-11 to the new offline LQR
-    // gain-design simulation result (see that file's comment). These
-    // defaults only apply to a FRESH EEPROM (no magic) or a schema upgrade
-    // (a param that didn't exist in the previously-saved count) -- an
-    // EEPROM that already has ROLL_KP etc. saved from before this change
-    // will keep loading the OLD values on boot regardless of this default,
-    // since Params::load() prefers EEPROM over these when both exist. Set
-    // the 6 values below explicitly in Mission Planner (Write Params) after
-    // reflashing, or use resetToDefaults(), to actually pick up the retune.
-    // integral_limit/output_limit_deg and yaw's k_rate/k_integral (fixed at
-    // 0, RateOnly mode has no rate/integral term -- see LqrAxisController.h)
-    // stay NOT exposed: those are saturation/mode structure, not tuning
-    // knobs a jitter investigation needs to touch.
-    add("ROLL_KP", &attitude.roll.k_primary, 2.569728f, 0.0f, 15.0f);
-    add("ROLL_KRATE", &attitude.roll.k_rate, 0.232119f, 0.0f, 5.0f);
-    add("ROLL_KI", &attitude.roll.k_integral, 1.059184f, 0.0f, 5.0f);
-    add("PITCH_KP", &attitude.pitch.k_primary, 4.162670f, 0.0f, 15.0f);
-    add("PITCH_KRATE", &attitude.pitch.k_rate, 0.482860f, 0.0f, 5.0f);
-    add("PITCH_KI", &attitude.pitch.k_integral, 1.336095f, 0.0f, 5.0f);
-    add("YAW_KP", &attitude.yaw.k_primary, 1.021439f, 0.0f, 10.0f);
+    // Inner-loop gains. The familiar parameter names are retained so existing
+    // Mission Planner workflows do not need to change. Values are copied into
+    // AttitudeController at construction, so power-cycle after changing them.
+    // TD/V10-trainer2 inner-loop gains. Parameter names are kept compatible
+    // with the previous GCS layout even though the active controller is now
+    // TD-style P/I/D rather than LQR. KRATE is the derivative/rate gain.
+    add("ROLL_KP", &attitude.roll.kp, 10.0f, 0.0f, 20.0f);
+    add("ROLL_KRATE", &attitude.roll.kd, 0.0f, 0.0f, 5.0f);
+    add("ROLL_KI", &attitude.roll.ki, 0.0f, 0.0f, 5.0f);
+    add("PITCH_KP", &attitude.pitch.kp, 10.0f, 0.0f, 20.0f);
+    add("PITCH_KRATE", &attitude.pitch.kd, 0.20f, 0.0f, 5.0f);
+    add("PITCH_KI", &attitude.pitch.ki, 0.0f, 0.0f, 5.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

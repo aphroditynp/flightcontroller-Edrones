@@ -128,6 +128,7 @@ fc::ModeManual* g_modeManual = nullptr;
 fc::ModeFbwa* g_modeFbwa = nullptr;
 fc::ModeAuto* g_modeAuto = nullptr;
 fc::ModeGuided* g_modeGuided = nullptr;
+fc::ModeLoiter* g_modeLoiter = nullptr;
 
 fc::ModeId g_activeModeId = fc::ModeId::Manual;
 
@@ -161,11 +162,10 @@ void reportStatus(uint8_t mavlink_severity, const char* text)
 }
 
 /**
- * Maps Radio's decoded mode_now (1-4; matches Mavlink's DO_SET_MODE mapping
- * and legacy Mode_Manager.h::setup_mode()'s MODEL_UAV_FIXEDWING branch) to a
- * ModeId, and switches ModeManager if it changed. mode_now==5 or any other
- * value is intentionally a no-op (stays on the current mode), matching
- * legacy behavior -- there was no 5th fixed-wing mode.
+ * Maps the four configured RC positions to MANUAL/FBWA/AUTO/GUIDED.
+ * LOITER is entered automatically after the final AUTO waypoint or explicitly
+ * through MAVLink custom_mode=12; it is intentionally not assigned to one of
+ * the existing four RC positions so the radio layout does not change.
  */
 void applyRcModeSwitch()
 {
@@ -328,6 +328,8 @@ void taskBuzzer(void*)
 
 void taskControl(void*)
 {
+    TickType_t last_wake = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(kControlPeriodMs);
     uint32_t last_update_us = micros();
     for (;;) {
         const uint32_t now_us = micros();
@@ -353,7 +355,10 @@ void taskControl(void*)
                                   -g_ahrs.data().acceleration_body_frame_mss.z,
                                   g_ctx->dt_s);
 
-        vTaskDelay(pdMS_TO_TICKS(kControlPeriodMs));
+        if ((xTaskGetTickCount() - last_wake) >= period) {
+            last_wake = xTaskGetTickCount();  // overrun: skip catch-up bursts
+        }
+        vTaskDelayUntil(&last_wake, period);
     }
 }
 
@@ -437,6 +442,9 @@ void setup()
     g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu);
     g_params.load();
 
+    // Fuzzy scales the actual conventional L1 baseline loaded from EEPROM.
+    g_fuzzyConfig.base_period_s = g_l1Config.period_s;
+
     // Keep Navigation/AttitudeController's airspeed envelope consistent
     // with the authoritative TecsConfig values Params just loaded -- see
     // docs/params.md for why these aren't registered as params twice.
@@ -472,10 +480,12 @@ void setup()
     g_modeFbwa = new fc::ModeFbwa(*g_ctx);
     g_modeAuto = new fc::ModeAuto(*g_ctx);
     g_modeGuided = new fc::ModeGuided(*g_ctx);
+    g_modeLoiter = new fc::ModeLoiter(*g_ctx);
     g_modeManager.registerMode(g_modeManual);
     g_modeManager.registerMode(g_modeFbwa);
     g_modeManager.registerMode(g_modeAuto);
     g_modeManager.registerMode(g_modeGuided);
+    g_modeManager.registerMode(g_modeLoiter);
     if (g_modeManager.setMode(fc::ModeId::Manual)) {
         g_activeModeId = fc::ModeId::Manual;
     }

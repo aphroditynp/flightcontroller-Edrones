@@ -6,18 +6,13 @@
 namespace fc {
 
 /**
- * FW mode implementations (legacy Mode_Fixedwing.h). The legacy FBWA path
- * used FW_CONTROL's own simplified stick-driven P+D controller (a SECOND,
- * redundant attitude-control implementation alongside the "real" one that
- * AUTO used via Attitude.h::stabilize()  --  see docs/attitude-lqr.md). This
- * refactor has exactly one attitude controller (AttitudeController, LQR),
- * used by both FBWA (stick-derived roll/pitch setpoints) and AUTO/GUIDED
- * (L1/TECS-derived setpoints)  --  no more parallel/redundant stack.
+ * Fixed-wing modes using the TD/V10-trainer2 inner attitude loop.
  *
- * Yaw in FBWA is fully automatic (AttitudeController's coordinated-turn
- * feedforward from the roll setpoint) rather than legacy's manual-stick +
- * auto-roll-mix blend  --  an intentional simplification once yaw is under
- * LQR rather than a hand-tuned rudder mix. See docs/modes.md.
+ * MANUAL reproduces TD's reversed aileron output. FBWA reproduces TD's
+ * stick-to-attitude mapping. AUTO/GUIDED use L1/TECS targets but track them
+ * with the same TD P+D inner loop. LOITER uses the existing ArduPilot-derived
+ * circular L1 guidance; the thesis-specific FuzzyL1Tuner adapts L1 period
+ * online, which changes Kx/Kv inside the circular guidance law.
  */
 
 class ModeManual final : public ModeBase {
@@ -43,6 +38,7 @@ protected:
 
 private:
     static float mapStickToDeg(uint16_t channel_pwm, float max_deg);
+    static float mapStickToRange(uint16_t channel_pwm, float min_deg, float max_deg);
 
     VehicleContext& ctx_;
 };
@@ -65,6 +61,21 @@ class ModeGuided final : public ModeBase {
 public:
     explicit ModeGuided(VehicleContext& ctx) : ctx_(ctx) {}
     ModeId id() const override { return ModeId::Guided; }
+
+protected:
+    bool _enter() override;
+    void _update() override;
+    void _exit() override;
+
+private:
+    VehicleContext& ctx_;
+};
+
+
+class ModeLoiter final : public ModeBase {
+public:
+    explicit ModeLoiter(VehicleContext& ctx) : ctx_(ctx) {}
+    ModeId id() const override { return ModeId::Loiter; }
 
 protected:
     bool _enter() override;

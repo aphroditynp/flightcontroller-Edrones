@@ -10,7 +10,7 @@ namespace fc {
  * selected which modes to register is gone  --  this is a compile-time FW-only
  * build, not a runtime dispatch.
  */
-enum class ModeId : uint8_t { Manual, Fbwa, Auto, Guided, Count };
+enum class ModeId : uint8_t { Manual, Fbwa, Auto, Guided, Loiter, Count };
 
 inline const char* modeCode4(ModeId id)
 {
@@ -19,6 +19,7 @@ inline const char* modeCode4(ModeId id)
         case ModeId::Fbwa: return "FBWA";
         case ModeId::Auto: return "AUTO";
         case ModeId::Guided: return "GUID";
+        case ModeId::Loiter: return "LOIT";
         default: return "UNKN";
     }
 }

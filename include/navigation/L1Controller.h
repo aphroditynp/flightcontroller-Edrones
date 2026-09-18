@@ -10,7 +10,7 @@
 namespace fc {
 
 struct L1ControllerConfig {
-    float period_s = 22.0f;      // ArduPilot default is 20; see docs/l1-controller.md
+    float period_s = 20.0f;      // ArduPilot default is 20; see docs/l1-controller.md
     float damping = 0.73f;
     float xtrack_integrator_gain = 0.2f;
     float loiter_bank_limit_deg = 45.0f;

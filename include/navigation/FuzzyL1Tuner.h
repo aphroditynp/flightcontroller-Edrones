@@ -19,9 +19,12 @@ struct FuzzyTrapezoid {
 };
 
 struct FuzzyL1TunerConfig {
+    // Runtime A/B selection persisted through Params (0=conventional L1, 1=fuzzy).
+    float enabled = 1.0f;
+
     // Baseline L1 period this tuner scales (should match L1Controller's
     // configured period at startup).
-    float base_period_s = 22.0f;
+    float base_period_s = 20.0f;
     float min_period_s = 10.0f;
     float max_period_s = 30.0f;
 
@@ -55,8 +58,8 @@ struct FuzzyL1TunerConfig {
  * gain scheduler in Fuzzy_FW_Roll.h/Fuzzy_FW_Pitch.h — same library API, new
  * inputs/output targeting L1 guidance instead of attitude PID gain.
  *
- * setEnabled(false) freezes the tuner and leaves L1Controller's period
- * untouched, making "L1 conventional" vs. "L1 + fuzzy" a runtime A/B toggle
+ * setEnabled(false) restores the configured base L1 period, making
+ * "L1 conventional" vs. "L1 + fuzzy" a runtime A/B toggle
  * rather than two separate firmware builds — this is the thesis's
  * comparison axis.
  */
@@ -77,7 +80,7 @@ public:
     /**
      * Computes crosstrack error rate internally from consecutive samples,
      * fuzzifies (e, de/dt) -> period scale, and applies the result to `l1`
-     * via setPeriod(). When disabled, l1's period is left untouched.
+     * via setPeriod(). When disabled, l1 is forced to base_period_s.
      */
     void update(L1Controller& l1, float crosstrack_error_m, float dt_s);
 
@@ -93,7 +96,7 @@ private:
 
     float last_crosstrack_error_m_ = 0.0f;
     float crosstrack_error_rate_mps_ = 0.0f;
-    float last_applied_period_s_ = 22.0f;
+    float last_applied_period_s_ = 20.0f;
     bool has_previous_sample_ = false;
 };
 

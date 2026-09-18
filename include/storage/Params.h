@@ -28,17 +28,13 @@ enum class ParamLoadResult : uint8_t {
  * Runtime-tunable parameter table + EEPROM persistence (legacy Params.h),
  * rebuilt FW-only: every copter gain entry (CP_STAB_xxx, CP_RATE_xxx, CP_ALT_P,
  * CP_ZVEL_P) and the MODEL_UAV vehicle-type switch are dropped, since there
- * is only one vehicle type now and nothing to switch. The legacy FW_ROLL/
- * PITCH/YAW/THR_P/I/D PID gains are also dropped (superseded by the LQR's
- * offline-computed, fixed K; see docs/attitude-lqr.md).
+ * is only one vehicle type now and nothing to switch. The active fixed-wing
+ * inner loop is the TD/V10-trainer2 P+D controller; ROLL/PITCH_KP/KRATE/KI
+ * expose those gains using the existing Mission Planner parameter names.
  *
- * K WAS intentionally not exposed here ("K is fixed, computed offline"),
- * until 2026-08-22: ground-test jitter diagnosis needed faster gain
- * iteration than reflashing per attempt, so ROLL/PITCH_KP/KRATE/KI and
- * YAW_KP are now registered too (see initFixedWing() below). IMPORTANT
- * caveat these gain params inherit from every param in this table: Tecs/
- * L1Controller/LqrAxisController all copy their Config struct BY VALUE at
- * construction (e.g. LqrAxisController's config_{}, Tecs's config_{}) --
+ * IMPORTANT caveat: these gain params inherit from every param in this table:
+ * Tecs/L1Controller/AttitudeController copy their Config struct BY VALUE at
+ * construction, so
  * changing a param here only updates the struct load() populates BEFORE
  * that one-time construction in main.cpp's setup(). A param write via
  * MAVLink SET_PARAM takes effect on the NEXT POWER CYCLE, not live in the
@@ -47,9 +43,9 @@ enum class ParamLoadResult : uint8_t {
  * Set + "Write Params" in the GCS, then power-cycle (not necessarily
  * reflash) to apply.
  *
- * New entries this refactor adds: L1 period/damping/xtrack-integrator-gain
- * (not registered as params at all in the legacy code -- a bare compile-time
- * global with no EEPROM exposure) and the fuzzy tuner's period-scale bounds.
+ * The table also exposes L1 period/damping/xtrack-integrator-gain and the
+ * fuzzy period tuner. FUZZY_ENABLE=0 gives the fixed-period conventional L1
+ * baseline; FUZZY_ENABLE=1 enables the thesis adaptive-period controller.
  *
  * Servo pin/channel mapping (legacy SERVO_AIL_L/ELE/RUD_L/AIL_R/RUD_R/
  * PAYLOAD/THROTTLE, MOTOR_1-4_PIN) is NOT ported into this table. Pin

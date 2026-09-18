@@ -62,6 +62,16 @@ struct MissionState {
     // FW_ControlModes.h's global nav_roll_deg/nav_pitch_deg.
     float nav_roll_deg = 0.0f;
     float nav_pitch_deg = 0.0f;
+
+    // TD-style fixed-wing LOITER runtime target. Positive radius/direction = CW.
+    // AUTO sets loiter_custom_target_set when the final mission waypoint is
+    // reached; explicit LOITER entered from GCS captures the current position.
+    Locations loiter_center_loc{};
+    float loiter_target_alt_cm = 0.0f;
+    bool loiter_custom_target_set = false;
+    float loiter_radius_m = 50.0f;
+    int8_t loiter_direction = 1;
+    float loiter_bank_limit_deg = 35.0f;
 };
 
 }  // namespace fc

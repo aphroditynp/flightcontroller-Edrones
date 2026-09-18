@@ -120,13 +120,13 @@ public:
 private:
     ActuatorConfig config_{};
 
-    Servo aileron_left_{};
-    Servo aileron_right_{};
-    Servo elevator_{};
-    Servo rudder_left_{};
-    Servo rudder_right_{};
-    Servo throttle_{};
-    Servo payload_{};
+    mutable Servo aileron_left_{};
+    mutable Servo aileron_right_{};
+    mutable Servo elevator_{};
+    mutable Servo rudder_left_{};
+    mutable Servo rudder_right_{};
+    mutable Servo throttle_{};
+    mutable Servo payload_{};
 
     bool payload_dropping_ = false;
     uint32_t payload_drop_start_ms_ = 0;

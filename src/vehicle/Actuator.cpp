@@ -57,15 +57,18 @@ void Actuator::writeManual(uint16_t ch_roll, uint16_t ch_pitch, uint16_t ch_yaw)
 {
     rudder_left_.writeMicroseconds(ch_yaw);
     rudder_right_.writeMicroseconds(ch_yaw);
-    aileron_left_.writeMicroseconds(ch_roll);
-    aileron_right_.writeMicroseconds(ch_roll);
+    // TD/V10-trainer2 manual output: aileron PWM is reversed around 1500.
+    const uint16_t reversed_roll = config_.pwm_min + config_.pwm_max - ch_roll;
+    aileron_left_.writeMicroseconds(reversed_roll);
+    aileron_right_.writeMicroseconds(reversed_roll);
     elevator_.writeMicroseconds(ch_pitch);
 }
 
 void Actuator::writeAttitude(const AttitudeController::Output& attitude)
 {
+    // TD fw_servos_out_fbwa(): pwm_ail = 1500 - u_roll.
     const uint16_t pwm_ail =
-        angleToPwm(attitude.aileron_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
+        angleToPwm(-attitude.aileron_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
     const uint16_t pwm_ele =
         angleToPwm(attitude.elevator_deg, config_.angle_to_pwm_gain, config_.angle_to_pwm_center);
     const uint16_t pwm_rud =
