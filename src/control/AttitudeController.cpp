@@ -51,11 +51,11 @@ AttitudeController::Output AttitudeController::update(float nav_roll_deg, float 
     // its old BNO055 wrapper used a different raw-axis convention. We port the
     // physical controller law, not that obsolete sensor-variable swap.
     float roll_raw =
-        config_.roll.kp * (imu.roll_deg - nav_roll_deg - roll_integral_) -
+        config_.roll.kp * ((-imu.roll_deg) - nav_roll_deg - roll_integral_) -
         config_.roll.kd * imu.angular_rate_dps.x;
 
     float pitch_raw =
-        config_.pitch.kp * (nav_pitch_deg - imu.pitch_deg + pitch_integral_) -
+        config_.pitch.kp * (nav_pitch_deg - (-imu.pitch_deg) + pitch_integral_) -
         config_.pitch.kd * imu.angular_rate_dps.y;
 
     // TD clamps raw servo offsets before writing 1500 +/- command.
