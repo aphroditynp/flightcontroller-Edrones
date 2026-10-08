@@ -5,3 +5,4 @@
 .vscode/ipch
 tools/lqr_gain_design/.venv
 __pycache__/
+tools/loiter_simulation/results/
