@@ -1,8 +1,30 @@
 # Refactor Modes (FW-only)
 
+## Automatic LOITER after AUTO
+
+The firmware does not switch to LOITER automatically after the last AUTO
+waypoint by default. This behavior is controlled in
+[`include/FC_Config.h`](../include/FC_Config.h):
+
+```cpp
+#define FC_AUTO_LOITER_ENABLE 0
+```
+
+Set it to `1` and reflash to enable the automatic transition. Leave it at `0`
+to keep the active mode as AUTO after the mission finishes. LOITER remains
+available as an explicit MAVLink mode (`custom_mode=12`); this setting only
+controls the automatic transition from AUTO.
+
+## Throttle in AUTO and LOITER
+
+`AUTO` and `LOITER` use the RC throttle channel directly. Navigation and
+attitude remain autonomous, but propulsion is written from
+`radio.channelThrottle()` in `src/modes/FixedWingModes.cpp`. TECS does not
+command the throttle in these two modes (`auto_throttle_mode` is disabled).
+
 Menggabungkan `Mode_setup.h` + `Mode_Manager.h` + `Mode_Fixedwing.h` lama menjadi
-struktur FW-only: `ModeId` hanya punya 4 nilai (`Manual`, `Fbwa`, `Auto`, `Guided`
--- `COPT`/`QHOV`/`TRNS` dihapus), dan **tidak ada lagi cabang runtime
+struktur FW-only: `ModeId` punya mode fixed-wing (`Manual`, `Fbwa`, `Auto`,
+`Guided`, dan `Loiter`; `COPT`/`QHOV`/`TRNS` dihapus), dan **tidak ada lagi cabang runtime
 `model_uav`** -- program lama meng-include `Mode_Flywing.h`/`Mode_Copter.h`/
 `Mode_Transisi.h` TANPA SYARAT (dikompilasi selalu, dipilih saat runtime);
 build baru ini FW-only secara compile-time, kode copter/VTOL tidak pernah ada

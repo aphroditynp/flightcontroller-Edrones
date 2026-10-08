@@ -90,7 +90,7 @@ void Ahrs::updateDriftCorrectedVelocity(const ImuData& imu, const GnssFixData& g
     const float cos_heading = cosf(imu.yaw_rad);
 
     if (gpsFixIsFresh(gnss) || gnss.fix_type == GnssFixType::Fix3D) {
-        data_.groundspeed_mps = gnss.ground_speed_mps;
+        data_.groundspeed_mps = gnss.ground_speed_mps; //ini dicekkk sebelum terbang jangan (* 1000)!!!
         data_.velocity_ned_mps = Vector3f(gnss.velocity_ned_mps[0], gnss.velocity_ned_mps[1],
                                           gnss.velocity_ned_mps[2]);
         data_.gps_lock = true;

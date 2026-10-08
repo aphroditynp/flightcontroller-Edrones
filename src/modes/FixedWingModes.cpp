@@ -2,6 +2,7 @@
 
 #include <AP_Math.h>
 
+#include "FC_Config.h"
 #include "vehicle/Actuator.h"
 
 namespace fc {
@@ -71,7 +72,7 @@ bool ModeAuto::_enter()
 {
     MissionState& mission = ctx_.navigation.state();
     mission.auto_navigation_mode = true;
-    mission.auto_throttle_mode = true;
+    mission.auto_throttle_mode = false;
     mission.auto_loiter_mode = false;
     ctx_.attitude.resetIntegrators();
     return true;
@@ -89,9 +90,9 @@ void ModeAuto::_update()
 
     ctx_.navigation.navigate(/*is_guided_mode=*/false, ctx_.l1, ahrs_data, imu_data, eas2tas);
 
-    // TD mission-complete behavior: hold the final mission waypoint in LOITER.
-    // Navigation leaves next_wp_loc pointing at that final waypoint when it
-    // marks AUTO complete, so preserve it as an explicit LOITER target.
+    // Optionally hold the final mission waypoint in LOITER. Navigation leaves
+    // next_wp_loc pointing at that final waypoint when it marks AUTO complete.
+#if FC_AUTO_LOITER_ENABLE
     MissionState& mission = ctx_.navigation.state();
     if (mission.wp_sum > 0 && !mission.auto_navigation_mode && mission.flag_wp < 0) {
         mission.loiter_center_loc = mission.next_wp_loc;
@@ -101,6 +102,9 @@ void ModeAuto::_update()
             return;
         }
     }
+#else
+    MissionState& mission = ctx_.navigation.state();
+#endif
 
     ctx_.navigation.updateSpeedHeight(ctx_.tecs, ahrs_data, ctx_.baro.data(), imu_data, ctx_.airspeed.data());
 
@@ -121,12 +125,9 @@ void ModeAuto::_update()
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
 
-    // Preserve the thesis program's TECS auto-throttle path. TD's current
-    // Trainer2 source has manual throttle enabled in AUTO, but that is not part
-    // of the attitude-loop oscillation fix and would unnecessarily reduce
-    // autonomous capability here.
-    const float throttle_percent = static_cast<float>(ctx_.tecs.throttleDemand()) / 100.0f;
-    ctx_.actuator.writeThrottleAuto(Actuator::percentToPwm(throttle_percent), ctx_.radio.armed());
+    // AUTO navigation is autonomous, but throttle remains under direct RC
+    // control so the pilot can set propulsion independently of TECS.
+    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
 }
 
 void ModeAuto::_exit()
@@ -184,7 +185,7 @@ bool ModeLoiter::_enter()
 {
     MissionState& mission = ctx_.navigation.state();
     mission.auto_navigation_mode = false;
-    mission.auto_throttle_mode = true;
+    mission.auto_throttle_mode = false;
     mission.auto_loiter_mode = true;
     ctx_.attitude.resetIntegrators();
 
@@ -256,8 +257,9 @@ void ModeLoiter::_update()
     ctx_.actuator.updatePayload(ctx_.radio.armed(), ctx_.payload_drop_command,
                                ctx_.radio.channelVehicleMode() > 1500);
 
-    const float throttle_percent = static_cast<float>(ctx_.tecs.throttleDemand()) / 100.0f;
-    ctx_.actuator.writeThrottleAuto(Actuator::percentToPwm(throttle_percent), ctx_.radio.armed());
+    // LOITER holds the bank/position autonomously, while propulsion remains
+    // directly controlled by the RC throttle stick.
+    ctx_.actuator.writeThrottleManual(ctx_.radio.channelThrottle(), true, ctx_.radio.armed());
 }
 
 void ModeLoiter::_exit()

@@ -45,6 +45,13 @@ bersamaan saat kedua modul itu di-port, bukan diasumsikan sekarang.
 | `update_speed_height()` | `navigation.updateSpeedHeight(tecs, ahrs_data, baro_data, imu_data, airspeed_data)` |
 | `get_adaptive_wp_airspeed(...)` | `navigation.getAdaptiveWaypointAirspeed(...)` |
 | `updateAuto_FW()` / `calc_nav_roll()` / `calc_nav_pitch()` | `navigation.updateAutoAttitudeTargets(l1, tecs, imu_data)`, hasil di `navigation.state().nav_roll_deg`/`nav_pitch_deg` |
+
+`navRollCd()` dari L1 memakai tanda lateral-acceleration pada navigation
+frame, sedangkan attitude controller fixed-wing memakai konvensi bank
+sebaliknya. Karena itu `updateAutoAttitudeTargets()` membalik tanda roll tepat
+di batas navigasi-ke-attitude. Koreksi ini berlaku konsisten untuk AUTO,
+GUIDED, dan LOITER; jangan membaliknya lagi di `L1Controller.cpp` atau
+`AttitudeController.cpp`.
 | `navigate()` | `navigation.navigate(is_guided_mode, l1, ahrs_data, imu_data, eas2tas)` |
 | `set_next_WP(loc)` | `navigation.setNextWaypoint(loc)` |
 | `get_next_ground_course(default)` | `navigation.getNextGroundCourse(default)` |

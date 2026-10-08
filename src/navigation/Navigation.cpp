@@ -165,8 +165,14 @@ float Navigation::getAdaptiveWaypointAirspeed(float dist_to_wp, float acceptance
 
 void Navigation::updateAutoAttitudeTargets(L1Controller& l1, Tecs& tecs, const ImuData& imu)
 {
+    // L1's positive lateral-acceleration demand follows the navigation-frame
+    // convention, while the fixed-wing attitude loop uses the opposite bank
+    // sign (the same convention already compensated in FBWA). Convert once at
+    // this navigation-to-attitude boundary so AUTO, GUIDED, and LOITER all
+    // command the same physical turn direction.
     mission_.nav_roll_deg =
-        constrain_float(l1.navRollCd(imu) / 100.0f, -config_.roll_limit_deg, config_.roll_limit_deg);
+        constrain_float(-(l1.navRollCd(imu) / 100.0f),
+                        -config_.roll_limit_deg, config_.roll_limit_deg);
     mission_.nav_pitch_deg =
         constrain_float(tecs.pitchDemandDeg(), config_.pitch_limit_min_deg, config_.pitch_limit_max_deg);
 }

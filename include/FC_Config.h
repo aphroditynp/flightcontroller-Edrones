@@ -36,6 +36,17 @@
 #define FC_DEBUG_SERIAL_ENABLE 0
 #endif
 
+// ---------------- Automatic LOITER after AUTO ----------------
+// 1: after the final AUTO waypoint, switch to LOITER around that waypoint.
+// 0: keep the active mode as AUTO when the mission finishes. LOITER can still
+// be selected explicitly through MAVLink custom_mode=12.
+//
+// Keep this disabled while validating AUTO so a completed mission cannot
+// change the flight mode unexpectedly.
+#ifndef FC_AUTO_LOITER_ENABLE
+#define FC_AUTO_LOITER_ENABLE 0
+#endif
+
 #if FC_DEBUG_SERIAL_ENABLE
 #define MAVLINK_USB_ENABLE_RX 0
 #define MAVLINK_USB_ENABLE_TX 0
