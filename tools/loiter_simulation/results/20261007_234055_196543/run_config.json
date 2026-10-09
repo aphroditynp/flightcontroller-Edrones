@@ -1,0 +1,25 @@
+{
+  "run_id": "20261007_234055_196543",
+  "tuning_profile": "balanced",
+  "config": {
+    "duration_s": 240.0,
+    "dt_s": 0.05,
+    "airspeed_mps": 18.0,
+    "loiter_radius_m": 50.0,
+    "base_period_s": 20.0,
+    "damping": 0.73,
+    "max_bank_deg": 35.0,
+    "roll_time_constant_s": 0.7,
+    "initial_radius_error_m": 35.0,
+    "disturbance_start_s": 90.0,
+    "disturbance_duration_s": 12.0,
+    "disturbance_roll_rate_deg_s": 7.0,
+    "min_period_s": 10.0,
+    "max_period_s": 30.0
+  },
+  "files": [
+    "l1_fixed.csv",
+    "l1_fuzzy.csv",
+    "loiter_comparison.png"
+  ]
+}
