@@ -1,0 +1,72 @@
+name: Loiter simulation
+
+on:
+  workflow_dispatch:
+    inputs:
+      tuning_profile:
+        description: Fuzzy tuning profile
+        required: true
+        default: balanced
+        type: choice
+        options:
+          - balanced
+          - firmware
+  push:
+    paths:
+      - "tools/loiter_simulation/**"
+      - ".github/workflows/loiter-simulation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  simulate:
+    name: Simulate ${{ matrix.controller }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        controller: [lqr, l1, fuzzy]
+    env:
+      TUNING_PROFILE: ${{ inputs.tuning_profile || 'balanced' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/flight_analysis/requirements.txt
+
+      - name: Install simulation dependencies
+        run: python -m pip install -r tools/flight_analysis/requirements.txt
+
+      - name: Run simulation
+        run: |
+          python tools/loiter_simulation/loiter_sim.py \
+            --controller "${{ matrix.controller }}" \
+            --tuning-profile "$TUNING_PROFILE" \
+            --output-dir "$RUNNER_TEMP/loiter-results" \
+            | tee "$RUNNER_TEMP/simulation.log"
+
+      - name: Add metrics to workflow summary
+        env:
+          CONTROLLER: ${{ matrix.controller }}
+        run: |
+          {
+            echo "## Loiter simulation: ${CONTROLLER}"
+            echo
+            echo '```text'
+            cat "$RUNNER_TEMP/simulation.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload simulation result
+        uses: actions/upload-artifact@v4
+        with:
+          name: loiter-${{ matrix.controller }}-${{ env.TUNING_PROFILE }}
+          path: ${{ runner.temp }}/loiter-results
+          if-no-files-found: error
+          retention-days: 30

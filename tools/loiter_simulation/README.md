@@ -109,8 +109,6 @@ Output default dibuat di subfolder timestamp baru di
 - `loiter_lqr.csv` — data run LQR radial.
 - `l1_fixed.csv` — data run L1 period tetap.
 - `l1_fuzzy.csv` — data run L1 + fuzzy.
-- `l1_fixed.csv` — data run L1 period tetap.
-- `l1_fuzzy.csv` — data run L1 + fuzzy.
 - `run_config.json` — profil dan parameter run untuk tracking.
 
 Nama folder run menggunakan timestamp sampai mikrodetik, sehingga grafik dari
@@ -141,6 +139,20 @@ Jalankan tes unit:
 ```bash
 python3 -m unittest discover -s tools/loiter_simulation -p 'test_*.py' -v
 ```
+
+## Hasil di GitHub Actions
+
+Workflow `.github/workflows/loiter-simulation.yml` menjalankan ketiga controller
+dan mengunggah hasilnya sebagai artifact terpisah:
+
+- `loiter-lqr-balanced`
+- `loiter-l1-balanced`
+- `loiter-fuzzy-balanced`
+
+Artifact berisi CSV, `run_config.json` (termasuk metrics), dan
+`loiter_comparison.png`. Workflow dapat dijalankan dari tab **Actions** dengan
+`workflow_dispatch`; pilih profil `balanced` atau `firmware`. Ringkasan metrik
+masing-masing controller juga tampil di bagian **Summary** workflow run.
 
 Metric RMS error yang dicetak mengabaikan 25% awal run untuk mengurangi pengaruh
 fase capture awal. Gangguan menggunakan roll-rate bertanda positif selama interval

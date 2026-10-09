@@ -446,12 +446,14 @@ def main() -> None:
     results = [simulate(config, fuzzy_enabled=mode == "fuzzy",
                         tuning_profile=args.tuning_profile, controller=mode)
                for mode in controllers]
+    metrics_by_controller = {}
     for result in results:
         filename = {"LQR navigasi": "loiter_lqr.csv",
                     "L1 period tetap": "l1_fixed.csv",
                     "L1 + fuzzy": "l1_fuzzy.csv"}[result.name]
         save_csv(result, run_dir / filename)
         metrics = result.metrics(config.loiter_radius_m)
+        metrics_by_controller[result.name] = metrics
         print(f"\n{result.name}")
         for key, value in metrics.items():
             print(f"  {key}: {value:.3f}")
@@ -468,6 +470,7 @@ def main() -> None:
         "run_id": run_id,
         "tuning_profile": args.tuning_profile,
         "config": config.__dict__,
+        "metrics": metrics_by_controller,
         "files": output_files + ([] if args.no_plot else ["loiter_comparison.png"]),
     }
     (run_dir / "run_config.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
