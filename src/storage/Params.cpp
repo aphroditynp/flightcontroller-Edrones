@@ -43,6 +43,7 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
 {
     count_ = 0;
 
+    add("LOITER_CTRL", &l1.loiter_controller_mode, 2.0f, 0.0f, 2.0f);
     // L1 guidance -- NOT registered as a param at all in the legacy code
     // (bare compile-time global, no EEPROM exposure). This is the parameter
     // the thesis's fuzzy tuner adjusts at runtime; the base value here is

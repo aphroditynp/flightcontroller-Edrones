@@ -10,6 +10,8 @@
 namespace fc {
 
 struct L1ControllerConfig {
+    // LOITER controller selector: 0=LQR, 1=fixed-period L1, 2=L1+fuzzy.
+    float loiter_controller_mode = 2.0f;
     float period_s = 20.0f;      // ArduPilot default is 20; see docs/l1-controller.md
     float damping = 0.73f;
     float xtrack_integrator_gain = 0.2f;
@@ -32,6 +34,7 @@ public:
     // Tuning accessors. period() is the fuzzy self-tuner's write target.
     void setPeriod(float period_s);
     float period() const;
+    const L1ControllerConfig& config() const;
     void setDamping(float damping);
     float damping() const;
     void setXtrackIntegratorGain(float gain);
@@ -59,12 +62,22 @@ public:
     int32_t bearingErrorCd() const;
     int32_t targetBearingCd() const;
     float crosstrackError() const;
+    float loiterTargetRadius() const;
+    bool loiterActive() const;
     float groundspeedVectorAngle() const;
 
     float turnDistance(float wp_radius, float eas2tas) const;
     float turnDistance(float wp_radius, float turn_angle, float eas2tas) const;
     float loiterRadius(float radius, float eas2tas, float target_airspeed_mps) const;
     bool reachedLoiterTarget() const;
+
+    /**
+     * Pure navigation outer-loop radial LQR. Returns a bank target; it does
+     * not drive servos or replace AttitudeController's inner-loop LQR.
+     */
+    float loiterLqrBankDemand(const AhrsData& ahrs, const Locations& center_wp,
+                              float radius, int8_t loiter_direction,
+                              float eas2tas, float target_airspeed_mps);
 
     bool dataIsStale() const;
     void setDataIsStale();
@@ -87,6 +100,7 @@ private:
     float nav_bearing_rad_ = 0.0f;
     float bearing_error_rad_ = 0.0f;
     float crosstrack_error_ = 0.0f;
+    float loiter_target_radius_m_ = 0.0f;
     int32_t target_bearing_cd_ = 0;
     float last_nu_ = 0.0f;
     float xtrack_integrator_ = 0.0f;

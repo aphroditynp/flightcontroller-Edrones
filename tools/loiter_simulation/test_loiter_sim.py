@@ -9,7 +9,7 @@ class FuzzyL1TunerTests(unittest.TestCase):
         self.assertEqual(trapezoid_membership(0.5, (0.0, 1.0, 1.0, 2.0)), 0.5)
         self.assertEqual(trapezoid_membership(0.0, (0.0, 0.0, 1.0, 2.0)), 1.0)
 
-    def test_fuzzy_period_is_clamped_and_rate_is_finite(self):
+    def test_fuzzy_period_is_clamped_and_delta_error_is_signed(self):
         tuner = FuzzyL1Tuner(20.0, 10.0, 30.0)
         period, rate = tuner.update(100.0, 0.05)
         self.assertTrue(10.0 <= period <= 30.0)
@@ -17,6 +17,15 @@ class FuzzyL1TunerTests(unittest.TestCase):
         period, rate = tuner.update(101.0, 0.05)
         self.assertTrue(10.0 <= period <= 30.0)
         self.assertAlmostEqual(rate, 20.0)
+        period, rate = tuner.update(100.0, 0.05)
+        self.assertTrue(10.0 <= period <= 30.0)
+        self.assertAlmostEqual(rate, -20.0)
+
+    def test_rule_base_matches_proposal(self):
+        self.assertEqual(
+            FuzzyL1Tuner.RULES,
+            ((2, 1, 0), (1, 1, 0), (1, 0, 0)),
+        )
 
 
 class SimulationTests(unittest.TestCase):
@@ -34,6 +43,12 @@ class SimulationTests(unittest.TestCase):
         result = simulate(SimulationConfig(duration_s=5.0), fuzzy_enabled=True,
                           tuning_profile="firmware")
         self.assertTrue((result.period_s >= 10.0).all())
+
+    def test_lqr_controller_is_available(self):
+        result = simulate(SimulationConfig(duration_s=5.0), fuzzy_enabled=False,
+                          controller="lqr")
+        self.assertEqual(result.name, "LQR navigasi")
+        self.assertTrue(__import__("numpy").isfinite(result.radial_error_m).all())
 
 
 if __name__ == "__main__":

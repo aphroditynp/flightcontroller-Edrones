@@ -1,7 +1,8 @@
 # Simulasi loiter L1 + fuzzy
 
-Simulasi Python ini membandingkan kendali loiter **L1 dengan period tetap** dan
-**L1 dengan fuzzy tuner** pada kondisi awal dan gangguan roll yang sama. Persamaan
+Simulasi Python ini membandingkan kendali loiter **LQR navigasi radial**, **L1 dengan
+period tetap**, dan **L1 dengan fuzzy tuner** pada kondisi awal dan gangguan
+roll yang sama. Persamaan
 L1 circular guidance, nilai awal fuzzy, dan rule base mengikuti
 `src/navigation/L1Controller.cpp`, `src/navigation/FuzzyL1Tuner.cpp`, serta
 `include/navigation/FuzzyL1Tuner.h`.
@@ -9,22 +10,33 @@ L1 circular guidance, nilai awal fuzzy, dan rule base mengikuti
 ## Model dan batasan
 
 - Gerak pesawat adalah model titik 2D dengan airspeed konstan dan koordinat North/East.
-- Perintah percepatan lateral L1 diubah ke sudut bank, dibatasi maksimum 35°,
+- Perintah percepatan lateral controller diubah ke sudut bank, dibatasi maksimum 35°,
   lalu melewati respons roll orde satu. Ini **bukan** model aerodinamika atau
   replika keseluruhan firmware/TECS/inner-loop.
 - Gangguan roll dimodelkan sebagai tambahan roll-rate selama interval tertentu.
-- Input fuzzy memakai `abs(error radius)` dan `abs(d|error|/dt)` seperti tuner
-  firmware. Defuzzifikasi Mamdani centroid didiskretisasi; hasil numeriknya bisa
-  sedikit berbeda dari implementasi eFLL di Teensy.
+- Input fuzzy memakai besar `abs(error radius)` dan perubahan error bertanda
+  `Δe` seperti proposal. Nilai negatif berarti error mengecil, nol berarti
+  relatif tetap, dan positif berarti error membesar. Defuzzifikasi Mamdani
+  centroid didiskretisasi; hasil numeriknya bisa sedikit berbeda dari
+  implementasi eFLL di Teensy.
 - Membership function dan rule base masih nilai awal proyek. Hasil simulasi
   bukan klaim performa terbang; kalibrasikan model dan validasi dengan log/data.
+
+Tersedia tiga controller simulasi:
+
+- `lqr`: LQR navigasi radial menghasilkan target bank. Dalam firmware, target
+  ini diteruskan ke `AttitudeController`; LQR attitude tetap menjadi inner loop.
+  Dalam simulasi, pelacakan target bank direpresentasikan oleh model respons
+  roll orde satu, bukan oleh LQR attitude.
+- `l1`: L1 dengan period tetap.
+- `fuzzy`: L1 dengan period yang diubah fuzzy.
 
 Tersedia dua profil output fuzzy:
 
 - `firmware`: nilai awal persis dari `FuzzyL1TunerConfig` proyek. Pada simulasi
   awal, profil ini menghasilkan period rata-rata sekitar 26 s dan error lebih
   besar karena terlalu sering memilih output `gentle`.
-- `balanced`: output `gentle` dan `normal` dipersempit agar period tetap dekat
+- `balanced`: output `Naik` dan `Tetap` dipersempit agar period tetap dekat
   baseline 20 s. Ini titik awal tuning simulasi, bukan perubahan otomatis pada
   firmware.
 
@@ -34,19 +46,19 @@ Fuzzy tuner menggunakan metode Mamdani dengan:
 
 ### Input 1 — besar error radius `|e|`
 
-| Himpunan | Breakpoint trapezoid (m) |
+| Himpunan | Breakpoint segitiga (m) |
 | --- | --- |
 | Kecil | `(0, 5, 5, 15)` |
 | Sedang | `(5, 15, 15, 30)` |
 | Besar | `(15, 30, 30, 60)` |
 
-### Input 2 — besar laju perubahan error `|d|e|/dt|`
+### Input 2 — perubahan error bertanda `Δe`
 
-| Himpunan | Breakpoint trapezoid (m/s) |
+| Himpunan | Breakpoint segitiga (m/s) |
 | --- | --- |
-| Kecil | `(0, 1, 1, 3)` |
-| Sedang | `(1, 3, 3, 6)` |
-| Besar | `(3, 6, 6, 12)` |
+| Negatif | `(-12, -6, -6, 0)` |
+| Nol | `(-6, 0, 0, 6)` |
+| Positif | `(0, 6, 6, 12)` |
 
 ### Output — skala L1 period
 
@@ -57,25 +69,25 @@ Profil `firmware` menggunakan:
 
 | Output | Breakpoint skala |
 | --- | --- |
-| Agresif | `(0.60, 0.70, 0.70, 0.85)` |
-| Normal | `(0.75, 1.00, 1.00, 1.25)` |
-| Gentle | `(1.15, 1.30, 1.30, 1.50)` |
+| Turun | `(0.60, 0.70, 0.70, 0.85)` |
+| Tetap | `(0.75, 1.00, 1.00, 1.25)` |
+| Naik | `(1.15, 1.30, 1.30, 1.50)` |
 
 Profil `balanced` yang dipakai default simulasi menggunakan:
 
 | Output | Breakpoint skala |
 | --- | --- |
-| Agresif | `(0.50, 0.60, 0.60, 0.75)` |
-| Normal | `(0.65, 0.80, 0.80, 1.00)` |
-| Gentle | `(0.90, 1.05, 1.05, 1.20)` |
+| Turun | `(0.50, 0.60, 0.60, 0.75)` |
+| Tetap | `(0.65, 0.80, 0.80, 1.00)` |
+| Naik | `(0.90, 1.05, 1.05, 1.20)` |
 
 Rule base yang sama dengan firmware:
 
-| `|e| \ |d|e|/dt|` | Kecil | Sedang | Besar |
+| `|e| \ Δe` | Negatif | Nol | Positif |
 | --- | --- | --- | --- |
-| Kecil | Gentle | Normal | Normal |
-| Sedang | Normal | Normal | Agresif |
-| Besar | Agresif | Agresif | Agresif |
+| Kecil | Naik | Tetap | Turun |
+| Sedang | Tetap | Tetap | Turun |
+| Besar | Tetap | Turun | Turun |
 
 Grafik `loiter_comparison.png` sekarang terdiri dari 8 panel: lintasan,
 radial error, L1 period, bank aktual, tiga grafik membership function dengan
@@ -94,7 +106,9 @@ python3 tools/loiter_simulation/loiter_sim.py
 Output default dibuat di subfolder timestamp baru di
 `tools/loiter_simulation/results/`. Run lama tidak ditimpa:
 
-- `loiter_comparison.png` — lintasan, radial error, period L1, dan sudut bank.
+- `loiter_lqr.csv` — data run LQR radial.
+- `l1_fixed.csv` — data run L1 period tetap.
+- `l1_fuzzy.csv` — data run L1 + fuzzy.
 - `l1_fixed.csv` — data run L1 period tetap.
 - `l1_fuzzy.csv` — data run L1 + fuzzy.
 - `run_config.json` — profil dan parameter run untuk tracking.
@@ -108,6 +122,12 @@ Contoh mengubah kondisi simulasi:
 python3 tools/loiter_simulation/loiter_sim.py \
   --duration 300 --dt 0.05 --radius 50 --airspeed 18 \
   --disturbance-start 100 --disturbance-duration 15 --disturbance-rate 8
+```
+
+Jalankan hanya satu controller bila diperlukan:
+
+```bash
+python3 tools/loiter_simulation/loiter_sim.py --controller lqr
 ```
 
 Untuk mereproduksi nilai fuzzy awal firmware:

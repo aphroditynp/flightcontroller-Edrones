@@ -20,6 +20,11 @@ float L1Controller::period() const
     return config_.period_s;
 }
 
+const L1ControllerConfig& L1Controller::config() const
+{
+    return config_;
+}
+
 void L1Controller::setDamping(float damping)
 {
     config_.damping = damping;
@@ -283,9 +288,41 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
         return false;
     }
 
+    float L1Controller::loiterLqrBankDemand(const AhrsData& ahrs, const Locations& center_wp,
+                                            float radius, int8_t loiter_direction,
+                                            float eas2tas, float target_airspeed_mps)
+    {
+        if (!ahrs.valid) {
+            return 0.0f;
+        }
+        radius = loiterRadius(fabsf(radius), eas2tas, target_airspeed_mps);
+        const Vector2f distance_ne = center_wp.get_distance_NE(ahrs.position);
+        const float distance = MAX(distance_ne.length(), 0.1f);
+        const Vector2f radial(distance_ne.x / distance, distance_ne.y / distance);
+        const Vector2f velocity(ahrs.velocity_ned_mps.x, ahrs.velocity_ned_mps.y);
+        const float radial_error = distance - radius;
+        loiter_target_radius_m_ = radius;
+        crosstrack_error_ = radial_error;
+        const float radial_velocity = velocity * radial;
+        const float tangent_velocity = radial.x * velocity.y - radial.y * velocity.x;
+
+        // LQR state feedback for [radial error, radial velocity], plus the
+        // centripetal acceleration required to remain on the selected circle.
+        constexpr float k_error = 0.55f;
+        constexpr float k_error_rate = 1.35f;
+        const float omega = MAX(target_airspeed_mps, 1.0f) / MAX(radius, 1.0f);
+        const float acceleration =
+            radial_error * k_error * omega * omega +
+            radial_velocity * k_error_rate * omega +
+            static_cast<float>(loiter_direction) *
+                tangent_velocity * tangent_velocity / MAX(radius, 1.0f);
+        return atanf(acceleration / 9.80665f);
+    }
+
     const Locations current_loc = ahrs.position;
 
     radius = loiterRadius(fabsf(radius), eas2tas, target_airspeed_mps);
+    loiter_target_radius_m_ = radius;
 
     const float omega = 6.2832f / config_.period_s;
     const float kx = omega * omega;
@@ -351,6 +388,16 @@ bool L1Controller::updateLoiter(const AhrsData& ahrs, const ImuData& imu,
 
     data_is_stale_ = false;
     return true;
+}
+
+float L1Controller::loiterTargetRadius() const
+{
+    return loiter_target_radius_m_;
+}
+
+bool L1Controller::loiterActive() const
+{
+    return wp_circle_;
 }
 
 void L1Controller::updateHeadingHold(const AhrsData& ahrs, const ImuData& imu,

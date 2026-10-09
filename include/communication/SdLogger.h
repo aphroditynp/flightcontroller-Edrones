@@ -51,7 +51,8 @@ public:
     void logRow(float roll_deg, float pitch_deg, float yaw_deg, float altitude_m,
                const char* mode_code4, bool armed, uint16_t ch1_roll, uint16_t ch2_pitch,
                uint16_t ch3_throttle, uint16_t ch4_yaw, uint16_t ch5_arm_raw, float mahony_roll_deg,
-               float mahony_pitch_deg, float mahony_yaw_deg);
+               float mahony_pitch_deg, float mahony_yaw_deg, float radial_error_m,
+               float target_radius_m, float l1_period_s);
 
     bool isOpen() const;
 

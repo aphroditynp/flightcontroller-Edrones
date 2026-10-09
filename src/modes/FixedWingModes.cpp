@@ -226,15 +226,26 @@ void ModeLoiter::_update()
     const float radius_m = MAX(fabsf(mission.loiter_radius_m), 20.0f);
     const int8_t direction = (mission.loiter_direction >= 0) ? 1 : -1;
 
-    // Same ArduPilot-derived circular L1 controller as TD's update_loiter().
-    ctx_.l1.updateLoiter(ahrs_data, imu_data, mission.loiter_center_loc,
-                         radius_m, direction, ctx_.baro.data().eas2tas,
-                         mission.target_airspeed_mps);
-
-    // Thesis-specific difference from TD: fuzzy changes L1 period online.
-    // updateLoiter() computes omega=2*pi/T, Kx=omega^2 and Kv=2*zeta*omega;
-    // therefore period adaptation is gain adaptation without rewriting L1.
-    ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
+    int controller_mode = static_cast<int>(ctx_.l1.config().loiter_controller_mode);
+    controller_mode = (controller_mode < 0) ? 0 : ((controller_mode > 2) ? 2 : controller_mode);
+    if (controller_mode == 0) {
+        // Navigation-only LQR: this creates the bank target. The existing
+        // AttitudeController (including its attitude LQR) still tracks it.
+        mission.nav_roll_deg = degrees(ctx_.l1.loiterLqrBankDemand(
+            ahrs_data, mission.loiter_center_loc, radius_m, direction,
+            ctx_.baro.data().eas2tas, mission.target_airspeed_mps));
+    } else {
+        ctx_.l1.updateLoiter(ahrs_data, imu_data, mission.loiter_center_loc,
+                             radius_m, direction, ctx_.baro.data().eas2tas,
+                             mission.target_airspeed_mps);
+        if (controller_mode == 2) {
+            ctx_.fuzzy_tuner.setEnabled(true);
+            ctx_.fuzzy_tuner.update(ctx_.l1, ctx_.l1.crosstrackError(), ctx_.dt_s);
+        } else {
+            ctx_.fuzzy_tuner.setEnabled(false);
+            ctx_.l1.setPeriod(ctx_.fuzzy_tuner.basePeriod());
+        }
+    }
 
     ctx_.navigation.updateSpeedHeight(ctx_.tecs, ahrs_data, ctx_.baro.data(), imu_data,
                                       ctx_.airspeed.data());
@@ -245,7 +256,11 @@ void ModeLoiter::_update()
                                    static_cast<int16_t>(throttle_stick_percent),
                                    ctx_.enableThrottleNudge);
 
-    ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
+    if (controller_mode != 0) {
+        ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
+    } else {
+        mission.nav_pitch_deg = ctx_.tecs.pitchDemandDeg();
+    }
     mission.nav_roll_deg = constrain_float(mission.nav_roll_deg,
                                            -mission.loiter_bank_limit_deg,
                                            mission.loiter_bank_limit_deg);

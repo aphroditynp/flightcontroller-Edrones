@@ -34,7 +34,8 @@ bool SdLogger::begin()
 
     file_.println("timestamp_ms,roll_deg,pitch_deg,yaw_deg,altitude_m,mode,armed,"
                   "ch1_roll,ch2_pitch,ch3_throttle,ch4_yaw,ch5_arm_raw,"
-                  "mahony_roll_deg,mahony_pitch_deg,mahony_yaw_deg");
+                  "mahony_roll_deg,mahony_pitch_deg,mahony_yaw_deg,"
+                  "radial_error_m,target_radius_m,l1_period_s");
     file_.flush();
     last_flush_ms_ = millis();
     open_ = true;
@@ -44,19 +45,22 @@ bool SdLogger::begin()
 void SdLogger::logRow(float roll_deg, float pitch_deg, float yaw_deg, float altitude_m,
                       const char* mode_code4, bool armed, uint16_t ch1_roll, uint16_t ch2_pitch,
                       uint16_t ch3_throttle, uint16_t ch4_yaw, uint16_t ch5_arm_raw,
-                      float mahony_roll_deg, float mahony_pitch_deg, float mahony_yaw_deg)
+                      float mahony_roll_deg, float mahony_pitch_deg, float mahony_yaw_deg,
+                      float radial_error_m, float target_radius_m, float l1_period_s)
 {
     if (!open_) {
         return;
     }
 
-    char line[200];
-    snprintf(line, sizeof(line), "%lu,%.2f,%.2f,%.2f,%.2f,%s,%d,%u,%u,%u,%u,%u,%.2f,%.2f,%.2f",
+    char line[260];
+    snprintf(line, sizeof(line), "%lu,%.2f,%.2f,%.2f,%.2f,%s,%d,%u,%u,%u,%u,%u,%.2f,%.2f,%.2f,%.3f,%.3f,%.3f",
              static_cast<unsigned long>(millis()), static_cast<double>(roll_deg),
              static_cast<double>(pitch_deg), static_cast<double>(yaw_deg),
              static_cast<double>(altitude_m), mode_code4, armed ? 1 : 0, ch1_roll, ch2_pitch,
              ch3_throttle, ch4_yaw, ch5_arm_raw, static_cast<double>(mahony_roll_deg),
-             static_cast<double>(mahony_pitch_deg), static_cast<double>(mahony_yaw_deg));
+             static_cast<double>(mahony_pitch_deg), static_cast<double>(mahony_yaw_deg),
+             static_cast<double>(radial_error_m), static_cast<double>(target_radius_m),
+             static_cast<double>(l1_period_s));
     file_.println(line);
 
     const uint32_t now_ms = millis();

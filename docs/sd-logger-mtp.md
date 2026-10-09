@@ -44,6 +44,31 @@ timestamp_ms,roll_deg,pitch_deg,yaw_deg,altitude_m,mode,armed,ch1_roll,ch2_pitch
 1234,2.10,-0.35,178.40,12.30,FBWA,1,1502,1498,1650,1500,1780
 ```
 
+Firmware terbaru menambahkan tiga kolom yang dipakai untuk analisis LOITER:
+
+```text
+...,mahony_roll_deg,mahony_pitch_deg,mahony_yaw_deg,radial_error_m,target_radius_m,l1_period_s
+```
+
+- `radial_error_m`: error radius LOITER dari `L1Controller` (radius aktual
+  dikurangi radius target); hanya terisi pada mode `LOIT`, selain itu `nan`.
+- `target_radius_m`: radius efektif yang dipakai L1 setelah kompensasi
+  `eas2tas`; hanya terisi pada mode `LOIT`.
+- `l1_period_s`: period L1 aktual, termasuk perubahan dari fuzzy tuner.
+
+Setelah menyalin `LOGnnn.CSV` dari SD, hitung metrik pasca-terbang dengan:
+
+```bash
+python3 tools/flight_analysis/analyze_loiter_log.py LOGnnn.CSV \
+  --json loiter_metrics.json
+```
+
+Analyzer mengambil baris `LOIT`, membuang 25% awal sebagai fase capture, lalu
+menghasilkan `radial_error_rms_m`, `radial_error_mean_abs_m`,
+`radial_error_max_abs_m`, `final_radius_m`, `target_radius_m`, dan
+`period_mean_s`. Angka tersebut berasal dari sampel penerbangan, bukan dari
+model simulasi.
+
 - `roll_deg`/`pitch_deg`/`yaw_deg`: `fc::ImuData` (BNO055), sama seperti yang
   dipakai `AttitudeController` -- lihat `docs/attitude-lqr.md`.
 - `altitude_m`: `fc::BarometerData::altitude_m` (Opsi 1, Kalman onboard, yang

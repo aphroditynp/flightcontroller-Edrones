@@ -68,3 +68,18 @@ setter — sekarang jadi anggota `L1ControllerConfig` dengan accessor publik.
 include/L1_Controller.h
 include/LQR_PF.h   (nama menyesatkan — isinya salinan lama algoritma L1 yang di-comment total, bukan LQR; lihat catatan di Fase 4/docs/attitude-lqr.md)
 ```
+# LOITER controller comparison
+
+The `LOITER_CTRL` parameter selects the outer-loop loiter controller:
+
+- `0`: navigation-only radial LQR, without L1 guidance.
+- `1`: fixed-period L1.
+- `2`: L1 with fuzzy period tuning.
+
+All three options still use the existing `AttitudeController` to track the
+resulting bank demand. Its attitude LQR remains the inner loop in all modes.
+The `0` option replaces only the outer circular navigation law with a
+two-state radial LQR (`radial error`, `radial error rate`) plus the centripetal
+term required by the target circle; it does not calculate servo outputs.
+Set the parameter and power-cycle before flight, as with the other
+EEPROM-loaded parameters.

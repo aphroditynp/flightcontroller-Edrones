@@ -143,6 +143,11 @@ float FuzzyL1Tuner::lastAppliedPeriod() const
     return last_applied_period_s_;
 }
 
+float FuzzyL1Tuner::basePeriod() const
+{
+    return config_.base_period_s;
+}
+
 float FuzzyL1Tuner::lastCrosstrackErrorRateMps() const
 {
     return crosstrack_error_rate_mps_;

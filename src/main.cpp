@@ -14,6 +14,8 @@
 
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <math.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -250,6 +252,8 @@ void taskSdLog(void*)
 {
     for (;;) {
         const fc::ImuData& imu = g_imu.data();
+        const char* mode_code = g_modeManager.code4();
+        const bool loiter_log = strcmp(mode_code, "LOIT") == 0;
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
         const fc::AttitudeMahonyData& mahony = g_attitudeMahony.data();
         const float mahony_roll_deg = mahony.roll_deg;
@@ -266,7 +270,10 @@ void taskSdLog(void*)
         g_sdLogger.logRow(imu.roll_deg, imu.pitch_deg, imu.yaw_deg, g_baro.data().altitude_m,
                           g_modeManager.code4(), g_radio.armed(), g_radio.channelRoll(),
                           g_radio.channelPitch(), g_radio.channelThrottle(), g_radio.channelYaw(),
-                          g_radio.channelArmRaw(), mahony_roll_deg, mahony_pitch_deg, mahony_yaw_deg);
+                          g_radio.channelArmRaw(), mahony_roll_deg, mahony_pitch_deg, mahony_yaw_deg,
+                          loiter_log ? g_l1->crosstrackError() : NAN,
+                          loiter_log ? g_l1->loiterTargetRadius() : NAN,
+                          g_l1->period());
         vTaskDelay(pdMS_TO_TICKS(kSdLogPeriodMs));
     }
 }

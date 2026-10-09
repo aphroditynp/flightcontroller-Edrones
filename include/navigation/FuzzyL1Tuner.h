@@ -85,6 +85,7 @@ public:
     void update(L1Controller& l1, float crosstrack_error_m, float dt_s);
 
     float lastAppliedPeriod() const;
+    float basePeriod() const;
     float lastCrosstrackErrorRateMps() const;
 
 private:

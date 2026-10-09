@@ -86,28 +86,30 @@ def trapezoid_membership(value: float, points: tuple[float, float, float, float]
 
 
 class FuzzyL1Tuner:
-    """Mamdani 2-input/3-set tuner using the firmware's starting rule base."""
+    """Mamdani tuner matching the proposal's triangular sets and rule base."""
 
     ERROR_SETS = (
         (0.0, 5.0, 5.0, 15.0),
         (5.0, 15.0, 15.0, 30.0),
         (15.0, 30.0, 30.0, 60.0),
     )
-    RATE_SETS = (
-        (0.0, 1.0, 1.0, 3.0),
-        (1.0, 3.0, 3.0, 6.0),
-        (3.0, 6.0, 6.0, 12.0),
+    # Signed Δe: negative means the error is decreasing, positive means it is
+    # increasing. Repeated inner points make these trapezoids triangular.
+    DELTA_ERROR_SETS = (
+        (-12.0, -6.0, -6.0, 0.0),
+        (-6.0, 0.0, 0.0, 6.0),
+        (0.0, 6.0, 6.0, 12.0),
     )
     OUTPUT_SETS = (
-        (0.6, 0.7, 0.7, 0.85),  # aggressive: shorter L1 period
-        (0.75, 1.0, 1.0, 1.25),  # normal
-        (1.15, 1.3, 1.3, 1.5),  # gentle: longer L1 period
+        (0.6, 0.7, 0.7, 0.85),  # turun: shorter L1 period
+        (0.75, 1.0, 1.0, 1.25),  # tetap
+        (1.15, 1.3, 1.3, 1.5),  # naik: longer L1 period
     )
-    # Rows: error small/medium/large; columns: rate small/medium/large.
+    # Rows: error small/medium/large; columns: Δe negative/zero/positive.
     RULES = (
-        (2, 1, 1),
-        (1, 1, 0),
-        (0, 0, 0),
+        (2, 1, 0),  # Kecil: Naik, Tetap, Turun
+        (1, 1, 0),  # Sedang: Tetap, Tetap, Turun
+        (1, 0, 0),  # Besar:  Tetap, Turun, Turun
     )
 
     def __init__(self, base_period_s: float, min_period_s: float, max_period_s: float,
@@ -126,11 +128,14 @@ class FuzzyL1Tuner:
             error_rate = (abs_error - self.previous_abs_error_m) / dt_s
         self.previous_abs_error_m = abs_error
 
-        # Firmware fuzzifies absolute e and absolute d|e|/dt.
+        # The proposal fuzzifies error magnitude and signed Δe.
         e_value = min(abs_error, self.ERROR_SETS[-1][-1])
-        de_value = min(abs(error_rate), self.RATE_SETS[-1][-1])
+        de_value = float(np.clip(error_rate, self.DELTA_ERROR_SETS[0][0],
+                                 self.DELTA_ERROR_SETS[-1][-1]))
         e_memberships = [trapezoid_membership(e_value, s) for s in self.ERROR_SETS]
-        de_memberships = [trapezoid_membership(de_value, s) for s in self.RATE_SETS]
+        de_memberships = [
+            trapezoid_membership(de_value, s) for s in self.DELTA_ERROR_SETS
+        ]
 
         # Mamdani min-AND / max aggregation and centroid defuzzification.
         universe = np.linspace(0.6, 1.5, 901)
@@ -212,7 +217,7 @@ TUNING_PROFILES = {
 
 
 def simulate(config: SimulationConfig, fuzzy_enabled: bool,
-             tuning_profile: str = "balanced") -> SimulationResult:
+             tuning_profile: str = "balanced", controller: str | None = None) -> SimulationResult:
     if config.dt_s <= 0 or config.duration_s <= 0:
         raise ValueError("duration_s and dt_s must be positive")
     if config.airspeed_mps <= 0 or config.loiter_radius_m <= 0:
@@ -235,9 +240,13 @@ def simulate(config: SimulationConfig, fuzzy_enabled: bool,
     bank[0] = 0.0
     if tuning_profile not in TUNING_PROFILES:
         raise ValueError(f"Unknown tuning profile: {tuning_profile}")
+    controller = controller or ("fuzzy" if fuzzy_enabled else "l1")
+    if controller not in ("lqr", "l1", "fuzzy"):
+        raise ValueError(f"Unknown controller: {controller}")
     tuner = FuzzyL1Tuner(config.base_period_s, config.min_period_s, config.max_period_s,
                          TUNING_PROFILES[tuning_profile])
-    name = "L1 + fuzzy" if fuzzy_enabled else "L1 period tetap"
+    names = {"lqr": "LQR navigasi", "l1": "L1 period tetap", "fuzzy": "L1 + fuzzy"}
+    name = names[controller]
 
     for i in range(count):
         t = time_s[i]
@@ -245,15 +254,28 @@ def simulate(config: SimulationConfig, fuzzy_enabled: bool,
         velocity_east = config.airspeed_mps * math.sin(heading[i])
 
         current_period = config.base_period_s
-        if i > 0 and fuzzy_enabled:
+        if i > 0 and controller == "fuzzy":
             # The firmware calls the tuner after updateLoiter() using fresh error.
             current_period, error_rate[i] = tuner.update(radial_error[i - 1], config.dt_s)
         period[i] = current_period
 
-        accel, error = _loiter_lateral_acceleration(
-            north[i], east[i], velocity_north, velocity_east,
-            config.loiter_radius_m, current_period, config.damping,
-        )
+        if controller == "lqr":
+            distance = max(math.hypot(north[i], east[i]), 1.0e-6)
+            radial_north, radial_east = north[i] / distance, east[i] / distance
+            radial_velocity = velocity_north * radial_north + velocity_east * radial_east
+            tangent_velocity = radial_north * velocity_east - radial_east * velocity_north
+            error = distance - config.loiter_radius_m
+            omega = config.airspeed_mps / config.loiter_radius_m
+            accel = (
+                0.55 * error * omega**2
+                + 1.35 * radial_velocity * omega
+                + tangent_velocity**2 / config.loiter_radius_m
+            )
+        else:
+            accel, error = _loiter_lateral_acceleration(
+                north[i], east[i], velocity_north, velocity_east,
+                config.loiter_radius_m, current_period, config.damping,
+            )
         radial_error[i] = error
         if i == count - 1:
             break
@@ -285,18 +307,19 @@ def save_csv(result: SimulationResult, path: Path) -> None:
     with path.open("w", newline="", encoding="utf-8") as output:
         writer = csv.writer(output)
         writer.writerow(("time_s", "north_m", "east_m", "heading_deg", "bank_deg",
-                         "bank_demand_deg", "radial_error_m", "l1_period_s", "abs_error_rate_mps"))
+                         "bank_demand_deg", "radial_error_m", "l1_period_s",
+                         "delta_error_mps"))
         writer.writerows(zip(
             result.time_s, result.north_m, result.east_m,
             np.degrees(result.heading_rad), np.degrees(result.bank_rad),
             np.degrees(result.bank_demand_rad), result.radial_error_m,
-            result.period_s, np.abs(result.error_rate_mps),
+            result.period_s, result.error_rate_mps,
         ))
 
 
-def _plot_membership_sets(ax, sets, names, x_max, xlabel, title):
+def _plot_membership_sets(ax, sets, names, x_min, x_max, xlabel, title):
     colors = ("tab:green", "tab:blue", "tab:red")
-    x_values = np.linspace(0.0, x_max, 1001)
+    x_values = np.linspace(x_min, x_max, 1001)
     for points, name, color in zip(sets, names, colors):
         values = [trapezoid_membership(float(x), points) for x in x_values]
         ax.plot(x_values, values, color=color, linewidth=2,
@@ -310,7 +333,7 @@ def _plot_membership_sets(ax, sets, names, x_max, xlabel, title):
 
 def save_plot(results: list[SimulationResult], config: SimulationConfig, path: Path,
               tuning_profile: str) -> None:
-    colors = ("tab:blue", "tab:orange")
+    colors = ("tab:green", "tab:blue", "tab:orange")
     figure, axes = plt.subplots(4, 2, figsize=(16, 20), constrained_layout=True)
 
     circle = np.linspace(0.0, 2.0 * math.pi, 500)
@@ -346,36 +369,37 @@ def save_plot(results: list[SimulationResult], config: SimulationConfig, path: P
 
     profile_sets = TUNING_PROFILES[tuning_profile]
     _plot_membership_sets(
-        axes[2, 0], FuzzyL1Tuner.ERROR_SETS, ("Kecil", "Sedang", "Besar"), 60.0,
+        axes[2, 0], FuzzyL1Tuner.ERROR_SETS, ("Kecil", "Sedang", "Besar"), 0.0, 60.0,
         "|e| (m)", "Fuzzy input 1: error radius",
     )
     _plot_membership_sets(
-        axes[2, 1], FuzzyL1Tuner.RATE_SETS, ("Kecil", "Sedang", "Besar"), 12.0,
-        "|d|e|/dt| (m/s)", "Fuzzy input 2: laju perubahan error",
+        axes[2, 1], FuzzyL1Tuner.DELTA_ERROR_SETS,
+        ("Negatif", "Nol", "Positif"), -12.0, 12.0,
+        "Δe (m/s)", "Fuzzy input 2: perubahan cross-track error",
     )
     _plot_membership_sets(
-        axes[3, 0], profile_sets, ("Agresif", "Normal", "Gentle"), 1.5,
+        axes[3, 0], profile_sets, ("Turun", "Tetap", "Naik"), 0.6, 1.5,
         "Skala period L1", f"Output fuzzy ({tuning_profile}; T = base period × skala)",
     )
 
     rule_ax = axes[3, 1]
     rule_ax.axis("off")
     rule_ax.set_title("Rule base fuzzy (Mamdani AND)", pad=12)
-    rule_values = np.array([["Gentle", "Normal", "Normal"],
-                            ["Normal", "Normal", "Agresif"],
-                            ["Agresif", "Agresif", "Agresif"]])
+    rule_values = np.array([["Naik", "Tetap", "Turun"],
+                            ["Tetap", "Tetap", "Turun"],
+                            ["Tetap", "Turun", "Turun"]])
     table = rule_ax.table(
         cellText=rule_values,
         rowLabels=("Kecil", "Sedang", "Besar"),
-        colLabels=("Δe kecil", "Δe sedang", "Δe besar"),
+        colLabels=("Negatif", "Nol", "Positif"),
         cellLoc="center", rowLoc="center", loc="center",
     )
     table.auto_set_font_size(False)
     table.set_fontsize(10)
     table.scale(1.1, 2.0)
     rule_ax.text(0.5, 0.12,
-                 "Baris: |e|     Kolom: |d|e|/dt|\n"
-                 "Gentle → period lebih panjang; agresif → lebih pendek\n"
+                 "Baris: |e|     Kolom: Δe bertanda\n"
+                 "Turun → period lebih pendek; Naik → lebih panjang\n"
                  f"Base={config.base_period_s:g} s, batas=[{config.min_period_s:g}, {config.max_period_s:g}] s",
                  ha="center", va="center", transform=rule_ax.transAxes, fontsize=10)
 
@@ -396,6 +420,8 @@ def parse_args() -> argparse.Namespace:
                         help="gangguan roll sebagai tambahan roll-rate (deg/s)")
     parser.add_argument("--tuning-profile", choices=tuple(TUNING_PROFILES), default="balanced",
                         help="firmware = nilai awal proyek; balanced = period fuzzy lebih dekat baseline")
+    parser.add_argument("--controller", choices=("lqr", "l1", "fuzzy"), default=None,
+                        help="controller yang dijalankan; default menjalankan ketiganya")
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).parent / "results",
                         help="root direktori output; setiap run dibuat dalam subfolder timestamp unik")
     parser.add_argument("--no-plot", action="store_true", help="hanya simpan CSV, jangan buat grafik")
@@ -416,12 +442,14 @@ def main() -> None:
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     run_dir = args.output_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
-    results = [
-        simulate(config, fuzzy_enabled=False, tuning_profile=args.tuning_profile),
-        simulate(config, fuzzy_enabled=True, tuning_profile=args.tuning_profile),
-    ]
+    controllers = (args.controller,) if args.controller else ("lqr", "l1", "fuzzy")
+    results = [simulate(config, fuzzy_enabled=mode == "fuzzy",
+                        tuning_profile=args.tuning_profile, controller=mode)
+               for mode in controllers]
     for result in results:
-        filename = "l1_fuzzy.csv" if result.name == "L1 + fuzzy" else "l1_fixed.csv"
+        filename = {"LQR navigasi": "loiter_lqr.csv",
+                    "L1 period tetap": "l1_fixed.csv",
+                    "L1 + fuzzy": "l1_fuzzy.csv"}[result.name]
         save_csv(result, run_dir / filename)
         metrics = result.metrics(config.loiter_radius_m)
         print(f"\n{result.name}")
@@ -431,11 +459,16 @@ def main() -> None:
         plot_path = run_dir / "loiter_comparison.png"
         save_plot(results, config, plot_path, args.tuning_profile)
         print(f"\nGrafik: {plot_path}")
+    output_files = []
+    for result in results:
+        output_files.append({"LQR navigasi": "loiter_lqr.csv",
+                             "L1 period tetap": "l1_fixed.csv",
+                             "L1 + fuzzy": "l1_fuzzy.csv"}[result.name])
     metadata = {
         "run_id": run_id,
         "tuning_profile": args.tuning_profile,
         "config": config.__dict__,
-        "files": ["l1_fixed.csv", "l1_fuzzy.csv"] + ([] if args.no_plot else ["loiter_comparison.png"]),
+        "files": output_files + ([] if args.no_plot else ["loiter_comparison.png"]),
     }
     (run_dir / "run_config.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     print(f"CSV dan konfigurasi: {run_dir}")
