@@ -177,6 +177,28 @@ void Navigation::updateAutoAttitudeTargets(L1Controller& l1, Tecs& tecs, const I
         constrain_float(tecs.pitchDemandDeg(), config_.pitch_limit_min_deg, config_.pitch_limit_max_deg);
 }
 
+void Navigation::updateAltitudePitchTarget(AltitudePitchController& altitude_pitch,
+                                           const AhrsData& ahrs, const BarometerData& baro,
+                                           const AirspeedData& airspeed, const ImuData& imu,
+                                           float dt_s)
+{
+    AltitudePitchController::Input input;
+    // Same positive-up, baro-referenced frame used when LOITER captures its
+    // target (position.alt) and when mission waypoints are uploaded (item.z).
+    input.target_altitude_m = mission_.target_altitude.amsl_cm * 0.01f;
+    input.altitude_m = static_cast<float>(ahrs.position.alt) * 0.01f;
+    input.climb_rate_mps = baro.climb_rate_mps;
+    // Ahrs only rejects NaN/Inf/>50 m/s; also reject a ~0 reading so a dead
+    // pitot can't trigger the underspeed pitch-up limit in flight.
+    input.airspeed_valid = ahrs.airspeed_sensor_enabled && airspeed.velocity_mps > 3.0f;
+    input.airspeed_mps = airspeed.velocity_mps;
+    input.roll_deg = imu.roll_deg;
+    input.dt_s = dt_s;
+
+    mission_.nav_pitch_deg = constrain_float(altitude_pitch.update(input), config_.pitch_limit_min_deg,
+                                             config_.pitch_limit_max_deg);
+}
+
 void Navigation::navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs,
                           const ImuData& imu, float eas2tas)
 {

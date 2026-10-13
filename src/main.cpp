@@ -115,12 +115,14 @@ fc::FuzzyL1TunerConfig g_fuzzyConfig;
 fc::TecsConfig g_tecsConfig;
 fc::NavigationConfig g_navigationConfig;
 fc::AttitudeControllerConfig g_attitudeConfig;
+fc::AltitudePitchControllerConfig g_altitudePitchConfig;
 
 fc::L1Controller* g_l1 = nullptr;
 fc::FuzzyL1Tuner* g_fuzzyTuner = nullptr;
 fc::Tecs* g_tecs = nullptr;
 fc::Navigation* g_navigation = nullptr;
 fc::AttitudeController* g_attitude = nullptr;
+fc::AltitudePitchController* g_altitudePitch = nullptr;
 
 fc::VehicleContext* g_ctx = nullptr;
 
@@ -439,7 +441,8 @@ void setup()
     // --- Parameters: register config-struct fields, then load from EEPROM
     // (or seed defaults if none present) BEFORE constructing anything that
     // reads these configs. ---
-    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig, g_imu);
+    g_params.initFixedWing(g_l1Config, g_fuzzyConfig, g_tecsConfig, g_attitudeConfig,
+                           g_altitudePitchConfig, g_imu);
     g_params.load();
 
     // Fuzzy scales the actual conventional L1 baseline loaded from EEPROM.
@@ -452,12 +455,20 @@ void setup()
     g_navigationConfig.airspeed_cruise_mps = g_tecsConfig.cruise_airspeed_mps;
     g_attitudeConfig.trim_airspeed_mps = g_tecsConfig.cruise_airspeed_mps;
 
+    // Altitude-hold pitch loop shares the same airspeed envelope and the
+    // same PITCH_MIN/MAX limits Navigation applies to nav_pitch_deg.
+    g_altitudePitchConfig.min_airspeed_mps = g_tecsConfig.min_airspeed_mps;
+    g_altitudePitchConfig.cruise_airspeed_mps = g_tecsConfig.cruise_airspeed_mps;
+    g_altitudePitchConfig.pitch_min_deg = g_navigationConfig.pitch_limit_min_deg;
+    g_altitudePitchConfig.pitch_max_deg = g_navigationConfig.pitch_limit_max_deg;
+
     g_l1 = new fc::L1Controller(g_l1Config);
     g_fuzzyTuner = new fc::FuzzyL1Tuner(g_fuzzyConfig);
     g_fuzzyTuner->begin();
     g_tecs = new fc::Tecs(g_tecsConfig);
     g_navigation = new fc::Navigation(g_navigationConfig);
     g_attitude = new fc::AttitudeController(g_attitudeConfig);
+    g_altitudePitch = new fc::AltitudePitchController(g_altitudePitchConfig);
 
     // --- Waypoints: load from EEPROM, or seed a minimal default mission. ---
     if (fc::Waypoints::load(g_navigation->state()) != fc::WaypointStorageResult::Success) {
@@ -469,7 +480,7 @@ void setup()
     // --- Vehicle context: bag of references every mode/Mavlink reads from. ---
     g_ctx = new fc::VehicleContext{
         g_imu, g_baro, g_airspeed, g_ahrs, *g_l1, *g_fuzzyTuner, *g_tecs, *g_navigation, *g_attitude,
-        g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params,
+        *g_altitudePitch, g_actuator, g_radio, g_battery, g_buzzer, g_modeManager, g_params,
 #if FC_ATTITUDE_ESTIMATOR_MAHONY_ENABLE
         g_attitudeMahony,
 #endif

@@ -12,7 +12,7 @@ constexpr uint16_t kEepromMagic = 0xFC02;  // New schema (FW-only) -- distinct f
 // extends to 8 + kMaxEepromWaypoints(50)*sizeof(Locations)(16) = 808, which
 // swallowed the old 650-782 range whole -- every waypoint save silently
 // corrupted these params and vice versa. 1000 leaves a clear 192-byte gap
-// past Waypoints' end; kAddrData+kMaxParams*4 = 1132 leaves just as much
+// past Waypoints' end; kAddrData+kMaxParams(48)*4 = 1196 still leaves a wide
 // margin before storage/ImuCalibrationStorage.h's block at 2000. See
 // docs/params.md and docs/imu-bno055.md for the full EEPROM map.
 constexpr uint16_t kAddrMagic = 1000;
@@ -39,7 +39,8 @@ void Params::add(const char* name, float* target, float default_val, float min_v
 }
 
 void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                           AttitudeControllerConfig& attitude, Imu& imu)
+                           AttitudeControllerConfig& attitude,
+                           AltitudePitchControllerConfig& altitude_pitch, Imu& imu)
 {
     count_ = 0;
 
@@ -105,6 +106,22 @@ void Params::initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, Te
     add("PITCH_KP", &attitude.pitch.kp, 10.0f, 0.0f, 20.0f);
     add("PITCH_KRATE", &attitude.pitch.kd, 0.20f, 0.0f, 5.0f);
     add("PITCH_KI", &attitude.pitch.ki, 0.0f, 0.0f, 5.0f);
+
+    // AUTO/LOITER altitude-hold pitch loop, independent of TECS (see
+    // docs/altitude-pitch-controller.md). APPENDED after every existing
+    // entry on purpose: Params::load() maps EEPROM slots by index, so new
+    // entries must go at the end -- an existing EEPROM then loads as
+    // SchemaUpgraded (old values kept, these defaulted) instead of shifting.
+    // ALT_CTRL_EN=0 restores the previous TECS-pitch behaviour.
+    add("ALT_CTRL_EN", &altitude_pitch.enabled, 1.0f, 0.0f, 1.0f);
+    add("ALT_KP", &altitude_pitch.altitude_kp, 0.3f, 0.0f, 2.0f);
+    add("ALT_RATE_KP", &altitude_pitch.rate_kp_deg_per_mps, 3.0f, 0.0f, 15.0f);
+    add("ALT_RATE_KI", &altitude_pitch.rate_ki_deg_per_m, 0.5f, 0.0f, 5.0f);
+    add("ALT_CLMB_MAX", &altitude_pitch.max_climb_rate_mps, 3.0f, 0.5f, 10.0f);
+    add("ALT_SINK_MAX", &altitude_pitch.max_sink_rate_mps, 2.5f, 0.5f, 10.0f);
+    add("ALT_PTCH_TRIM", &altitude_pitch.pitch_trim_deg, 0.0f, -10.0f, 15.0f);
+    add("ALT_PTCH_FF", &altitude_pitch.climb_feedforward_gain, 1.0f, 0.0f, 2.0f);
+    add("ALT_ROLL_CMP", &altitude_pitch.roll_compensation_deg, 10.0f, 0.0f, 30.0f);
 }
 
 float Params::clampValue(float value, float min_val, float max_val)

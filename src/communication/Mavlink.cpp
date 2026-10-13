@@ -701,11 +701,14 @@ void Mavlink::sendNavControllerOutput(const VehicleContext& ctx)
 {
     const MissionState& mission = ctx.navigation.state();
     const float aspd_error = mission.target_airspeed_mps - ctx.airspeed.data().velocity_mps;
+    // Altitude-hold pitch loop error (m, positive = below target); shows up
+    // in Mission Planner as "alt_error". Only meaningful in AUTO/LOITER.
+    const float alt_error = ctx.altitude_pitch.altitudeErrorM();
 
     mavlink_message_t msg;
     mavlink_msg_nav_controller_output_pack(config_.system_id, config_.component_id, &msg, mission.nav_roll_deg,
-                                           mission.nav_pitch_deg, 0, 0, mission.auto_state.distance_next_wp, 0,
-                                           aspd_error, ctx.l1.crosstrackError());
+                                           mission.nav_pitch_deg, 0, 0, mission.auto_state.distance_next_wp,
+                                           alt_error, aspd_error, ctx.l1.crosstrackError());
     mavSendAll(msg);
 }
 

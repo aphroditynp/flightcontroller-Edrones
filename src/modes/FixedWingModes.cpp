@@ -75,6 +75,9 @@ bool ModeAuto::_enter()
     mission.auto_throttle_mode = false;
     mission.auto_loiter_mode = false;
     ctx_.attitude.resetIntegrators();
+    // Bumpless start from the pitch actually being flown (nav_pitch_deg
+    // convention = -imu.pitch_deg, see AttitudeController).
+    ctx_.altitude_pitch.reset(-ctx_.controlImu().pitch_deg);
     return true;
 }
 
@@ -113,6 +116,13 @@ void ModeAuto::_update()
                                    static_cast<int16_t>(throttle_stick_percent), ctx_.enableThrottleNudge);
 
     ctx_.navigation.updateAutoAttitudeTargets(ctx_.l1, ctx_.tecs, imu_data);
+
+    // Altitude hold through pitch, independent of TECS (TECS only owns
+    // auto-throttle, which is off here). Overwrites nav_pitch_deg.
+    if (ctx_.altitude_pitch.enabled()) {
+        ctx_.navigation.updateAltitudePitchTarget(ctx_.altitude_pitch, ahrs_data, ctx_.baro.data(),
+                                                  ctx_.airspeed.data(), imu_data, ctx_.dt_s);
+    }
 
     // Thesis contribution: fuzzy adapts L1 period. L1 internally derives its
     // guidance gains from period, so changing period changes Kx/Kv online.
@@ -188,6 +198,7 @@ bool ModeLoiter::_enter()
     mission.auto_throttle_mode = false;
     mission.auto_loiter_mode = true;
     ctx_.attitude.resetIntegrators();
+    ctx_.altitude_pitch.reset(-ctx_.controlImu().pitch_deg);
 
     if (mission.loiter_custom_target_set) {
         mission.loiter_custom_target_set = false;
@@ -249,6 +260,14 @@ void ModeLoiter::_update()
     mission.nav_roll_deg = constrain_float(mission.nav_roll_deg,
                                            -mission.loiter_bank_limit_deg,
                                            mission.loiter_bank_limit_deg);
+
+    // Hold loiter_target_alt_cm (copied into target_altitude in _enter())
+    // through pitch, independent of TECS. Bank compensation inside the
+    // controller adds the nose-up needed for the sustained loiter bank.
+    if (ctx_.altitude_pitch.enabled()) {
+        ctx_.navigation.updateAltitudePitchTarget(ctx_.altitude_pitch, ahrs_data, ctx_.baro.data(),
+                                                  ctx_.airspeed.data(), imu_data, ctx_.dt_s);
+    }
 
     const AttitudeController::Output output =
         ctx_.attitude.update(mission.nav_roll_deg, mission.nav_pitch_deg, ctx_.controlImu(),

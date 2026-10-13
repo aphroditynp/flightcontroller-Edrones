@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 
+#include "control/AltitudePitchController.h"
 #include "control/AttitudeController.h"
 #include "drivers/Imu.h"
 #include "navigation/FuzzyL1Tuner.h"
@@ -59,11 +60,14 @@ enum class ParamLoadResult : uint8_t {
  */
 class Params final {
 public:
-    static constexpr uint16_t kMaxParams = 32;
+    // 48 (was 32): 30 existing entries + 9 ALT_* entries. EEPROM end address
+    // kAddrData(1004) + 48*4 = 1196, still well below ImuCalibrationStorage (2000).
+    static constexpr uint16_t kMaxParams = 48;
 
     /** Registers pointers into the caller-owned config structs. Call once at startup. */
     void initFixedWing(L1ControllerConfig& l1, FuzzyL1TunerConfig& fuzzy, TecsConfig& tecs,
-                       AttitudeControllerConfig& attitude, Imu& imu);
+                       AttitudeControllerConfig& attitude,
+                       AltitudePitchControllerConfig& altitude_pitch, Imu& imu);
 
     ParamLoadResult load();
     void save();

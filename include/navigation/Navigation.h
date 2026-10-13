@@ -3,6 +3,7 @@
 #include <AP_Math.h>
 #include <Locations.h>
 
+#include "control/AltitudePitchController.h"
 #include "estimation/Ahrs.h"
 #include "navigation/L1Controller.h"
 #include "navigation/MissionState.h"
@@ -77,6 +78,16 @@ public:
     /** Writes MissionState::nav_roll_deg/nav_pitch_deg from L1/TECS demand — the target the
      * Phase-4 LQR attitude controller tracks. */
     void updateAutoAttitudeTargets(L1Controller& l1, Tecs& tecs, const ImuData& imu);
+
+    /**
+     * Overwrites MissionState::nav_pitch_deg with the TECS-independent
+     * altitude-hold pitch loop (AUTO/LOITER). Call AFTER
+     * updateAutoAttitudeTargets(). Altitude = AhrsData::position.alt (baro,
+     * positive up), target = MissionState::target_altitude.amsl_cm.
+     */
+    void updateAltitudePitchTarget(AltitudePitchController& altitude_pitch, const AhrsData& ahrs,
+                                   const BarometerData& baro, const AirspeedData& airspeed,
+                                   const ImuData& imu, float dt_s);
 
     /** Main AUTO/GUIDED navigation state machine. */
     void navigate(bool is_guided_mode, L1Controller& l1, const AhrsData& ahrs, const ImuData& imu,

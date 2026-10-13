@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "FC_Config.h"
+#include "control/AltitudePitchController.h"
 #include "control/AttitudeController.h"
 #include "drivers/Airspeed.h"
 #include "drivers/Barometer.h"
@@ -47,6 +48,9 @@ struct VehicleContext {
     Tecs& tecs;
     Navigation& navigation;
     AttitudeController& attitude;
+    // AUTO/LOITER altitude-hold pitch loop, separate from TECS (which is
+    // left in charge of auto-throttle only). See docs/altitude-pitch-controller.md.
+    AltitudePitchController& altitude_pitch;
     Actuator& actuator;
     Radio& radio;
     Battery& battery;
